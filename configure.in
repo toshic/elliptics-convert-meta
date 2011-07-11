@@ -1,0 +1,20 @@
+AC_INIT([elliptics_meta_convert], [0.0.1], [toshik@yandex-team.ru])
+AM_INIT_AUTOMAKE(1.9)
+
+AC_PROG_CC
+
+AC_LANG([C])
+
+AC_CHECK_HEADER(kclangc.h, [], AC_MSG_ERROR([This program requires the Kyoto Cabinet.]))
+AC_CHECK_LIB(kyotocabinet, kcdbopen, [], AC_MSG_ERROR([This program requires the Kyoto Cabinet.]))
+
+AC_CHECK_HEADER(eblob/blob.h, [], AC_MSG_ERROR([This program requires the eblob library.]))
+AC_CHECK_LIB(eblob, eblob_init, [], AC_MSG_ERROR([This program requires the eblob library.]))
+
+AC_CHECK_HEADER(elliptics/packet.h, [], AC_MSG_ERROR([This program requires the Elliptics.]))
+AC_CHECK_HEADER(elliptics/interface.h, [], AC_MSG_ERROR([This program requires the Elliptics.]))
+AC_CHECK_LIB(elliptics, dnet_db_read_raw, [], AC_MSG_ERROR([This program requires the eblob library.]))
+
+AC_CONFIG_FILES([Makefile])
+
+AC_OUTPUT
