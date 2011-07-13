@@ -1,9 +1,19 @@
 AC_INIT([elliptics_meta_convert], [0.0.1], [toshik@yandex-team.ru])
 AM_INIT_AUTOMAKE(1.9)
 
+AC_CONFIG_MACRO_DIR([config])
+
 AC_PROG_CC
+AC_PROG_CXX
 
 AC_LANG([C])
+
+AX_BOOST_BASE([], [], AC_MSG_ERROR([This program requires the Boost.]))
+AX_BOOST_SYSTEM()
+AX_BOOST_PROGRAM_OPTIONS()
+AX_BOOST_FILESYSTEM()
+AX_BOOST_IOSTREAMS()
+AX_BOOST_THREAD()
 
 AC_CHECK_HEADER(kclangc.h, [], AC_MSG_ERROR([This program requires the Kyoto Cabinet.]))
 AC_CHECK_LIB(kyotocabinet, kcdbopen, [], AC_MSG_ERROR([This program requires the Kyoto Cabinet.]))
