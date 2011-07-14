@@ -215,6 +215,7 @@ class remote_update {
 
 			memset(&ecfg, 0, sizeof(ecfg));
 			ecfg.file = (char *)meta_.c_str();
+			ecfg.sync = 30;
 
 			log.log = dnet_common_log;
 			log.log_private = NULL;
