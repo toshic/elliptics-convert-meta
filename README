@@ -1,0 +1,21 @@
+Utilities to convert metadata for upgrade from elliptics 2.9 to 2.10
+
+There is 3 steps to convert metadata from 2.9 to 2.10:
+
+1. Convert Kyoto Cabinet meta.kch to eblob meta using dnet_convert_meta utility
+	dnet_convert_meta -M /path/to/meta.kch -N /path/to/eblob-meta
+   This step is mandatory.
+
+2. Convert Kyoto Cabinet history.kch to create META_UPDATE timestamps that are required for correct checks
+	dnet_convert_history -M /path/to/eblob-meta -H /path/to/history.kch -g 1:2
+   If there is records in history.kch that doesn't exists in meta.kch this utility will create it. -g specifies groups for such records.
+   This utility is not mandatory but it's highly recommended to run it.
+
+3. Run over files on filesystem/eblob to add missed meta records and optionally update checksums
+	dnet_convert_files --input-path /path/to/files/root --meta /path/to/eblob-meta --group 1 --group 2 
+   Input path should point to root directory in case of filesystem backand or to eblob in case of eblob backend.
+   If there is files that doesn't have records in meta thils utility will create it. --group parameter specifies groups for such records.
+   There are optional parameters:
+     --threads (default it 16) - number of threads that iterates over eblob/filesystem
+     --enable-checksum - enable checksum calculation and update. If old checksum differs this utility will overwrite it.
+
