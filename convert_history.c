@@ -95,7 +95,7 @@ static const char *hparser_visit(const char *key, size_t keysz,
 	dnet_setup_id(&mc.id, 0, id.id);
 	err = dnet_db_read_raw(ptrs->newmeta, &id, &mc.data);
 	if (err == -ENOENT) {
-		struct dnet_metadata_control ctl;
+		struct dnet_meta_create_control ctl;
 
 		fprintf(stdout, "not found. Re-creating metadata\n");
 

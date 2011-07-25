@@ -28,7 +28,21 @@ extern "C" {
 
 #define DNET_CONF_ADDR_DELIM ':'
 
-int dnet_create_write_meta(struct dnet_metadata_control *ctl, void **data);
+struct dnet_meta_create_control {
+	struct dnet_id			id;
+	const char			*obj;
+	int				len;
+
+	int				*groups;
+	int				group_num;
+
+	uint64_t			update_flags;
+	struct timespec			ts;
+
+	uint8_t				checksum[DNET_CSUM_SIZE];
+};
+
+int dnet_create_write_meta(struct dnet_meta_create_control *ctl, void **data);
 struct dnet_meta * dnet_meta_search_cust(struct dnet_meta_container *mc, uint32_t type);
 void dnet_common_log(void *priv __attribute((unused)), uint32_t mask, const char *msg);
 int dnet_parse_groups(char *value, int **groupsp);

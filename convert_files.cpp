@@ -30,13 +30,12 @@ class processor_key {
 		uint64_t offset;
 		uint64_t size;
 		std::string id;
+		boost::iostreams::mapped_file *file;
 };
 
 class generic_processor {
 	public:
 		virtual processor_key next(void) = 0;
-		virtual void move(processor_key &) = 0;
-		virtual void remove(processor_key &) = 0;
 };
 
 class eblob_processor : public generic_processor {
@@ -48,6 +47,9 @@ class eblob_processor : public generic_processor {
 		virtual ~eblob_processor() {
 			if (file_.is_open())
 				file_.close();
+
+			if (data_file_.is_open())
+				data_file_.close();
 		}
 
 		processor_key next(void) {
@@ -71,6 +73,7 @@ class eblob_processor : public generic_processor {
 					key.path = path_ + "." + boost::lexical_cast<std::string>(index_ - 1);
 					key.offset = dc.position + sizeof(dc);
 					key.size = dc.data_size;
+					key.file = &data_file_;
 					break;
 				}
 			}
@@ -78,16 +81,12 @@ class eblob_processor : public generic_processor {
 			return key;
 		}
 
-		void move(processor_key &) {
-		}
-		void remove(processor_key &) {
-		}
-
 	private:
 		std::string path_;
 		int index_;
 		uint64_t pos_;
 		boost::iostreams::mapped_file file_;
+		boost::iostreams::mapped_file data_file_;
 
 		void open_index() {
 			std::ostringstream filename;
@@ -97,7 +96,13 @@ class eblob_processor : public generic_processor {
 			if (file_.is_open())
 				file_.close();
 
-			filename << path_ << "." << index_ << ".index";
+			if (data_file_.is_open())
+				data_file_.close();
+
+			filename << path_ << "." << index_;
+			data_file_.open(filename.str(), std::ios_base::in | std::ios_base::binary);
+
+			filename << ".index";
 			file_.open(filename.str(), std::ios_base::in | std::ios_base::binary);
 
 			++index_;
@@ -132,6 +137,14 @@ class fs_processor : public generic_processor {
 				key.offset = 0;
 				key.size = 0;
 
+				if (file_.is_open())
+					file_.close();
+
+				file_.open(key.path, std::ios_base::in | std::ios_base::binary);
+
+				key.file = &file_;
+				key.size = file_.size();
+
 				std::cout << "fs: " << itr_->path() << std::endl;
 
 				++itr_;
@@ -140,26 +153,10 @@ class fs_processor : public generic_processor {
 			return key;
 		}
 
-		void move(processor_key &k) {
-			char dstr[DNET_ID_SIZE*2+1];
-			dnet_dump_id_len_raw((const unsigned char *)k.id.data(), DNET_ID_SIZE, dstr);
-
-			std::string dst = "/tmp/";
-			dst.append(dstr);
-
-			fs::rename(k.path, dst);
-
-			std::cout << "moved " << k.path << " -> " << dst << std::endl;
-			k.path = dst;
-		}
-
-		void remove(processor_key &k) {
-			fs::remove(k.path);
-		}
-
 	private:
 		fs::recursive_directory_iterator end_itr_, itr_;
 		std::vector<std::string> dirs_;
+		boost::iostreams::mapped_file file_;
 
 		void parse(const std::string &value, std::string &key) {
 			unsigned char ch[5];
@@ -266,7 +263,7 @@ class remote_update {
 			memcpy(&id.id, (unsigned char *)key.id.data(), DNET_ID_SIZE);
 			err = dnet_db_read_raw(meta, &id, &mc.data);
 			if (err == -ENOENT) {
-				struct dnet_metadata_control ctl;
+				struct dnet_meta_create_control ctl;
 
 				std::cout << "not found. Re-creating metadata" << std::endl;
 
@@ -278,6 +275,10 @@ class remote_update {
 				ctl.groups = &groups_[0];
 				ctl.group_num = groups_.size();
 
+				if (!(aflags_ & DNET_ATTR_NOCSUM)) {
+					eblob_hash(meta, ctl.checksum, sizeof(ctl.checksum), key.file->const_data() + key.offset, key.size);
+				}
+
 				dnet_setup_id(&ctl.id, 0, id.id);
 
 				err = dnet_create_write_meta(&ctl, &mc.data);
@@ -286,9 +287,35 @@ class remote_update {
 					return;
 				}
 
+				mc.size = err;
 				err = dnet_db_write_raw(meta, &id, mc.data, mc.size);
 				if (err) {
 					std::cout << "Metadata write failed! err: " << err << std::endl;
+				}
+
+			} else if (err > 0 && !(aflags_ & DNET_ATTR_NOCSUM)) {
+				struct dnet_meta_checksum *csum;
+				struct dnet_meta *mp;
+				uint8_t checksum[DNET_CSUM_SIZE];
+
+				mc.size = err;
+
+				mp = dnet_meta_search_cust(&mc, DNET_META_CHECKSUM);
+				if (mp) {
+					csum = (struct dnet_meta_checksum *)mp->data;
+					eblob_hash(meta, checksum, sizeof(checksum), key.file->const_data() + key.offset, key.size);
+					if (memcmp(csum->checksum, checksum, DNET_CSUM_SIZE)) {
+						std::cout << "Checksum mismatch, updating with the new one" << std::endl;
+
+						memcpy(csum->checksum, checksum, DNET_CSUM_SIZE);
+						dnet_current_time(&csum->tm);
+						dnet_convert_meta_checksum(csum);
+
+						err = dnet_db_write_raw(meta, &id, mc.data, mc.size);
+						if (err) {
+							std::cout << "Metadata write failed! err: " << err << std::endl;
+						}
+					}
 				}
 
 			} else if (err <= 0) {
@@ -336,8 +363,8 @@ int main(int argc, char *argv[])
 			("group", po::value<std::vector<int> >(&groups),
 			 	"Group number which will host given object, can be used multiple times for several groups")
 			("meta", po::value<std::string>(&meta), "Meta DB")
-			//("enable-checksum", po::value<int>(&csum_enabled)->default_value(0),
-			// 	"Set to 1 if you want to enable server generated checksums")
+			("enable-checksum", po::value<int>(&csum_enabled)->default_value(0),
+			 	"Set to 1 if you want to enable server generated checksums")
 		;
 
 		po::variables_map vm;

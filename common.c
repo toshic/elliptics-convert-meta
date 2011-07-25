@@ -22,7 +22,7 @@
 #include "common.h"
 
 
-int dnet_create_write_meta(struct dnet_metadata_control *ctl, void **data)
+int dnet_create_write_meta(struct dnet_meta_create_control *ctl, void **data)
 {
 	struct dnet_meta_container mc;
 	struct dnet_meta_check_status *c;
@@ -89,6 +89,7 @@ int dnet_create_write_meta(struct dnet_metadata_control *ctl, void **data)
 	}
 
 	csum = (struct dnet_meta_checksum *)m->data;
+	memcpy(csum, ctl->checksum, DNET_CSUM_SIZE);
 	csum->tm.tsec = ctl->ts.tv_sec;
 	csum->tm.tnsec = ctl->ts.tv_nsec;
 	dnet_convert_meta_checksum(csum);
@@ -101,7 +102,6 @@ int dnet_create_write_meta(struct dnet_metadata_control *ctl, void **data)
 	memcpy(&mc.id, &ctl->id, sizeof(struct dnet_id));
 
 	*data = mc.data;
-printf("meta size = %d\n", mc.size);
 	return mc.size;
 
 err_out_exit:

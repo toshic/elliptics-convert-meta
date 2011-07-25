@@ -63,8 +63,10 @@ static const char *mparser_visit(const char *key, size_t keysz,
 	char id_str[2 * DNET_ID_SIZE + 1];
 	struct dnet_raw_id id;
 	struct dnet_meta_container mc;
-	struct dnet_metadata_control ctl;
+	struct dnet_meta_create_control ctl;
 	struct dnet_meta m, *mp = NULL;
+	struct dnet_meta_update *mu;
+	struct dnet_meta_checksum *csum;
 	void *data = (void *)mdata;
 	unsigned int size = datasz;
 	char tstr[64];
@@ -129,6 +131,16 @@ static const char *mparser_visit(const char *key, size_t keysz,
 				ctl.group_num = m.size / sizeof(int);
 				break;
 
+			case DNET_META_CHECKSUM:
+				csum = (struct dnet_meta_checksum *)mp->data;
+				memcpy(ctl.checksum, csum->checksum, DNET_CSUM_SIZE);
+				break;
+
+			case DNET_META_UPDATE:
+				mu = (struct dnet_meta_update *)mp->data;
+				dnet_convert_meta_update(mu);
+				ctl.ts.tv_sec = mu->tm.tsec;
+				ctl.ts.tv_nsec = mu->tm.tnsec;
 		}
 
 		data += m.size + sizeof(struct dnet_meta);
