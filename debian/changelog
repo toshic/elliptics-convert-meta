@@ -1,3 +1,15 @@
+elliptics-convert-meta (0.2.2) unstable; urgency=low
+
+  * Fixed Debian rules file
+
+ -- Anton Kortunov <toshik@yandex-team.ru>  Mon, 25 July 2011 17:30:00 +0300
+
+elliptics-convert-meta (0.2.1) unstable; urgency=low
+
+  * Fixed Linux Hardy build
+
+ -- Anton Kortunov <toshik@yandex-team.ru>  Mon, 25 July 2011 17:30:00 +0300
+
 elliptics-convert-meta (0.2.0) unstable; urgency=low
 
   * Added checksum support

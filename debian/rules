@@ -64,7 +64,7 @@ install: build
 	dh_installdirs
 
 	# Add here commands to install the package into debian/elliptics.
-	$(MAKE) DESTDIR=$(CURDIR)/debian/elliptics install
+	$(MAKE) DESTDIR=$(CURDIR)/debian/elliptics-convert-meta install
 
 
 # Build architecture-independent files here.
