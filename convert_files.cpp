@@ -31,12 +31,13 @@ class processor_key {
 		uint64_t offset;
 		uint64_t size;
 		std::string id;
-		boost::iostreams::mapped_file *file;
+		boost::shared_ptr<boost::iostreams::mapped_file> file;
 };
 
 class generic_processor {
 	public:
 		virtual processor_key next(void) = 0;
+		boost::shared_mutex access;
 };
 
 class eblob_processor : public generic_processor {
@@ -74,11 +75,10 @@ class eblob_processor : public generic_processor {
 					key.path = path_ + "." + boost::lexical_cast<std::string>(index_ - 1);
 					key.offset = dc.position + sizeof(dc);
 					key.size = dc.data_size;
-					key.file = &data_file_;
+					key.file.reset(&data_file_);
 					break;
 				}
 			}
-
 			return key;
 		}
 
@@ -91,6 +91,11 @@ class eblob_processor : public generic_processor {
 
 		void open_index() {
 			std::ostringstream filename;
+			struct eblob_disk_control *dc;
+			uint64_t index_pos;
+
+			boost::upgrade_lock<boost::shared_mutex> lock(access);
+			boost::upgrade_to_unique_lock<boost::shared_mutex> uniqueLock(lock);
 
 			pos_ = 0;
 
@@ -107,6 +112,7 @@ class eblob_processor : public generic_processor {
 			file_.open(filename.str(), std::ios_base::in | std::ios_base::binary);
 
 			++index_;
+
 		}
 };
 
@@ -136,17 +142,15 @@ class fs_processor : public generic_processor {
 				parse(itr_->leaf(), key.id);
 				key.path = itr_->path().string();
 				key.offset = 0;
-				key.size = 0;
+				key.size = fs::file_size(itr_->path());
 
-				if (file_.is_open())
-					file_.close();
-
-				file_.open(key.path, std::ios_base::in | std::ios_base::binary);
-
-				key.file = &file_;
-				key.size = file_.size();
+				if (key.size == 0) {
+					++itr_;
+					continue;
+				}
 
 				std::cout << "fs: " << itr_->path() << std::endl;
+				key.file.reset(new boost::iostreams::mapped_file(key.path, std::ios_base::in | std::ios_base::binary));
 
 				++itr_;
 				break;
@@ -157,7 +161,6 @@ class fs_processor : public generic_processor {
 	private:
 		fs::recursive_directory_iterator end_itr_, itr_;
 		std::vector<std::string> dirs_;
-		boost::iostreams::mapped_file file_;
 
 		void parse(const std::string &value, std::string &key) {
 			unsigned char ch[5];
@@ -211,6 +214,8 @@ class remote_update {
 				proc = new eblob_processor(path);
 			}
 
+			total_cnt = 0;
+
 			memset(&ecfg, 0, sizeof(ecfg));
 			ecfg.file = (char *)meta_.c_str();
 			ecfg.sync = 30;
@@ -235,9 +240,13 @@ class remote_update {
 				threads.join_all();
 			} catch (const std::exception &e) {
 				std::cerr << "Finished processing " << path << " : " << e.what() << std::endl;
+				eblob_cleanup(meta);
 				delete proc;
+				std::cerr << "Totally processed " << total_cnt << " records" << std::endl;
 				throw e;
 			}
+			std::cerr << "1Totally processed " << total_cnt << " records" << std::endl;
+			eblob_cleanup(meta);
 
 			delete proc;
 		}
@@ -247,16 +256,24 @@ class remote_update {
 		std::string meta_;
 		boost::mutex data_lock_;
 		int aflags_;
+		uint64_t total_cnt;
 
 		void update(generic_processor *proc, processor_key &key, struct eblob_backend *meta) {
 			struct dnet_raw_id id;
 			struct dnet_meta *m;
 			struct dnet_meta_container mc;
+			struct dnet_meta_checksum *csum;
+			struct dnet_meta *mp;
+			uint8_t checksum[DNET_CSUM_SIZE];
 			int err;
 
-			memset(&mc, 0, sizeof(mc));
+			if (key.offset + key.size > key.file->size()) {
+				std::cout << "failed. " << dnet_dump_id_str(id.id) << ": incorrect length: "
+				<< "offset=" << key.offset << ", size=" << key.size << ", file.size=" << key.file->size() << std::endl;
+				return;
+			}
 
-			//std::string meta, data;
+			memset(&mc, 0, sizeof(mc));
 
 			memcpy(&mc.id, (unsigned char *)key.id.data(), DNET_ID_SIZE);
 			std::cout << "Processing " << dnet_dump_id_len(&mc.id, DNET_ID_SIZE) << " ";
@@ -294,11 +311,10 @@ class remote_update {
 					std::cout << "Metadata write failed! err: " << err << std::endl;
 				}
 
+			} else if (err <= 0) {
+				std::cout << "failed. " << dnet_dump_id_str(id.id) << ": meta DB read failed, err: " << err << std::endl;
+				return;
 			} else if (err > 0 && !(aflags_ & DNET_ATTR_NOCSUM)) {
-				struct dnet_meta_checksum *csum;
-				struct dnet_meta *mp;
-				uint8_t checksum[DNET_CSUM_SIZE];
-
 				mc.size = err;
 
 				mp = dnet_meta_search_cust(&mc, DNET_META_CHECKSUM);
@@ -319,9 +335,6 @@ class remote_update {
 					}
 				}
 
-			} else if (err <= 0) {
-				std::cout << "failed. " << dnet_dump_id_str(id.id) << ": meta DB read failed, err: " << err << std::endl;
-				return;
 			}
 
 			free(mc.data);
@@ -335,11 +348,16 @@ class remote_update {
 					{
 						boost::mutex::scoped_lock scoped_lock(data_lock_);
 						key = proc->next();
+						total_cnt++;
 					}
 
-					update(proc, key, meta);
+					{
+						boost::shared_lock<boost::shared_mutex> lock(proc->access);
+						update(proc, key, meta);
+					}
 				}
-			} catch (...) {
+			} catch (const std::exception &e) {
+				std::cerr << "Catched exception : " << e.what() << std::endl;
 			}
 		}
 };
