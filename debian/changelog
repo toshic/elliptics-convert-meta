@@ -1,3 +1,10 @@
+elliptics-convert-meta (0.2.5) lucid; urgency=low
+
+  * Return correct error code
+  * Remove Crupto++ include
+
+ -- Anton Kortunov <toshik@yandex-team.ru>  Thu, 04 Aug 2011 13:38:39 +0400
+
 elliptics-convert-meta (0.2.4) unstable; urgency=low
 
   * Changed elliptics package name to elliptics-2.10
