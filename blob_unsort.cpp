@@ -20,8 +20,6 @@
 #include <boost/filesystem.hpp>
 namespace fs = boost::filesystem;
 
-#include <crypto++/sha.h>
-
 #include <eblob/blob.h>
 
 #include "common.h"
