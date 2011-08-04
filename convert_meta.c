@@ -273,6 +273,7 @@ err_out_dbopen:
 	err = kcdbclose(meta);
 	if (!err)
 		fprintf(stderr, "Failed to close meta database '%s': %d.\n", meta_name, -kcdbecode(meta));
+	err = !err;
 	kcdbdel(meta);
 
 err_out_exit:

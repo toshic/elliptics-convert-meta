@@ -277,6 +277,7 @@ err_out_dbopen:
 	if (!err)
 		fprintf(stderr, "Failed to close history database '%s': %d.\n", history_name, -kcdbecode(history));
 	kcdbdel(history);
+	err = !err;
 
 err_out_exit:
 	return err;
