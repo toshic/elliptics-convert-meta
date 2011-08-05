@@ -37,7 +37,6 @@ class processor_key {
 class generic_processor {
 	public:
 		virtual processor_key next(void) = 0;
-		boost::shared_mutex access;
 };
 
 class eblob_processor : public generic_processor {
@@ -50,8 +49,6 @@ class eblob_processor : public generic_processor {
 			if (file_.is_open())
 				file_.close();
 
-			if (data_file_.is_open())
-				data_file_.close();
 		}
 
 		processor_key next(void) {
@@ -75,7 +72,7 @@ class eblob_processor : public generic_processor {
 					key.path = path_ + "." + boost::lexical_cast<std::string>(index_ - 1);
 					key.offset = dc.position + sizeof(dc);
 					key.size = dc.data_size;
-					key.file.reset(&data_file_);
+					key.file = data_file_;
 					break;
 				}
 			}
@@ -87,26 +84,20 @@ class eblob_processor : public generic_processor {
 		int index_;
 		uint64_t pos_;
 		boost::iostreams::mapped_file file_;
-		boost::iostreams::mapped_file data_file_;
+		boost::shared_ptr<boost::iostreams::mapped_file> data_file_;
 
 		void open_index() {
 			std::ostringstream filename;
 			struct eblob_disk_control *dc;
 			uint64_t index_pos;
 
-			boost::upgrade_lock<boost::shared_mutex> lock(access);
-			boost::upgrade_to_unique_lock<boost::shared_mutex> uniqueLock(lock);
-
 			pos_ = 0;
 
 			if (file_.is_open())
 				file_.close();
 
-			if (data_file_.is_open())
-				data_file_.close();
-
 			filename << path_ << "." << index_;
-			data_file_.open(filename.str(), std::ios_base::in | std::ios_base::binary);
+			data_file_.reset(new boost::iostreams::mapped_file(filename.str(), std::ios_base::in | std::ios_base::binary));
 
 			filename << ".index";
 			file_.open(filename.str(), std::ios_base::in | std::ios_base::binary);
@@ -351,10 +342,7 @@ class remote_update {
 						total_cnt++;
 					}
 
-					{
-						boost::shared_lock<boost::shared_mutex> lock(proc->access);
-						update(proc, key, meta);
-					}
+					update(proc, key, meta);
 				}
 			} catch (const std::exception &e) {
 				std::cerr << "Catched exception : " << e.what() << std::endl;
