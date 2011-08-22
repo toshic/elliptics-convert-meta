@@ -17,6 +17,7 @@
 #include <boost/bind.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 namespace fs = boost::filesystem;
 
 #include <eblob/blob.h>
@@ -38,6 +39,27 @@ class generic_processor {
 	public:
 		virtual processor_key next(void) = 0;
 };
+
+
+struct timespec parse_time(std::string &datetime)
+{
+	struct timespec datetime_dt;
+	try {
+		boost::posix_time::ptime ptime(boost::posix_time::time_from_string(datetime));
+		boost::posix_time::ptime epoch(boost::gregorian::date(1970,1,1));
+		boost::posix_time::time_duration diff;
+
+		diff = ptime - epoch;
+
+		datetime_dt.tv_sec = diff.total_seconds();
+		datetime_dt.tv_nsec = diff.total_nanoseconds();
+	} catch(...) {
+		datetime_dt.tv_sec = 0;
+		datetime_dt.tv_nsec = 0;
+	}
+
+	return datetime_dt;
+}
 
 class eblob_processor : public generic_processor {
 	public:
@@ -187,7 +209,8 @@ class fs_processor : public generic_processor {
 
 class remote_update {
 	public:
-		remote_update(const std::vector<int> groups, const std::string meta) : groups_(groups), meta_(meta), aflags_(0) {
+		remote_update(const std::vector<int> groups, const std::string meta, struct timespec update_date) :
+				 groups_(groups), meta_(meta), update_date_(update_date), aflags_(0) {
 		}
 
 		void process(const std::string &path, int tnum = 16, int csum_enabled = 0) {
@@ -248,6 +271,7 @@ class remote_update {
 		boost::mutex data_lock_;
 		int aflags_;
 		uint64_t total_cnt;
+		struct timespec update_date_;
 
 		void update(generic_processor *proc, processor_key &key, struct eblob_backend *meta) {
 			struct dnet_raw_id id;
@@ -289,6 +313,8 @@ class remote_update {
 				}
 
 				dnet_setup_id(&ctl.id, 0, id.id);
+
+				ctl.ts = update_date_;
 
 				err = dnet_create_write_meta(&ctl, &mc.data);
 				if (err <= 0) {
@@ -359,6 +385,8 @@ int main(int argc, char *argv[])
 		std::vector<int> groups(groups_array, groups_array + ARRAY_SIZE(groups_array));
 		std::string addr;
 		std::string meta;
+		std::string update_date;
+		struct timespec update_dt;
 		int port, family;
 		int thread_num;
 		int csum_enabled;
@@ -372,6 +400,8 @@ int main(int argc, char *argv[])
 			("meta", po::value<std::string>(&meta), "Meta DB")
 			("enable-checksum", po::value<int>(&csum_enabled)->default_value(0),
 			 	"Set to 1 if you want to enable server generated checksums")
+			("update-date", po::value<std::string>(&update_date)->default_value(""),
+				"Update date for created meta in format like \"2011-08-22 21:42:00\"")
 		;
 
 		po::variables_map vm;
@@ -383,7 +413,8 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 
-		remote_update up(groups, meta);
+		update_dt = parse_time(update_date);
+		remote_update up(groups, meta, update_dt);
 		up.process(vm["input-path"].as<std::string>(), thread_num, csum_enabled);
 	} catch (const std::exception &e) {
 		std::cerr << "Exiting: " << e.what() << std::endl;
