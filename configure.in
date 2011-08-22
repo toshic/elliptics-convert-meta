@@ -14,6 +14,7 @@ AX_BOOST_PROGRAM_OPTIONS()
 AX_BOOST_FILESYSTEM()
 AX_BOOST_IOSTREAMS()
 AX_BOOST_THREAD()
+AX_BOOST_DATE_TIME()
 
 AC_CHECK_HEADER(kclangc.h, [], AC_MSG_ERROR([This program requires the Kyoto Cabinet.]))
 AC_CHECK_LIB(kyotocabinet, kcdbopen, [], AC_MSG_ERROR([This program requires the Kyoto Cabinet.]))
