@@ -236,7 +236,6 @@ int main(int argc, char *argv[])
 
 	memset(&ecfg, 0, sizeof(ecfg));
 	ecfg.file = newmeta_name;
-	ecfg.hash_size = (unsigned int)kcdbcount(history);
 	ecfg.sync = 30;
 
 	log.log = dnet_common_log;
